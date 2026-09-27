@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Importacao piloto dos Dados Abertos do CNPJ (Receita Federal).
 
-Uso: python scripts/import_cnpj.py --companies Empresas0.zip --establishments Estabelecimentos0.zip --cnaes Cnaes.zip --limit 1000 --dry-run
+Uso: python scripts/import_cnpj.py --companies Empresas0.zip --establishments Estabelecimentos0.zip --cnaes Cnaes.zip --municipalities Municipios.zip --limit 1000 --dry-run
 Use --companies multiplos arquivos quando os estabelecimentos selecionados pertencem a outros lotes.
 Requer DATABASE_URL apenas ao gravar. Nao coloque a URL nem senhas no Git.
 """
@@ -60,6 +60,7 @@ def main():
     p.add_argument("--companies", nargs="+", required=True, type=Path, help="ZIP(s) Empresas")
     p.add_argument("--establishments", nargs="+", required=True, type=Path, help="ZIP(s) Estabelecimentos")
     p.add_argument("--cnaes", nargs="+", required=True, type=Path, help="ZIP(s) CNAEs")
+    p.add_argument("--municipalities", nargs="+", required=True, type=Path, help="ZIP(s) Municipios")
     p.add_argument("--limit", type=int, default=1000, help="Limite de estabelecimentos")
     p.add_argument("--dry-run", action="store_true", help="Valida arquivos sem gravar")
     args = p.parse_args()
@@ -98,6 +99,22 @@ def main():
             break
     if not selected:
         raise ValueError("Nenhum estabelecimento valido encontrado")
+
+    municipality_codes = {record[15] for record in selected.values() if record[15]}
+    municipalities = {}
+    for row in zip_rows(args.municipalities):
+        if len(row) < 2:
+            raise ValueError("Linha de Municipios com menos de 2 colunas")
+        code = optional(row[0])
+        if code in municipality_codes:
+            municipalities[code] = row[1].strip()
+        if len(municipalities) == len(municipality_codes):
+            break
+    missing = municipality_codes - municipalities.keys()
+    if missing:
+        raise ValueError(f"Codigos de municipios nao encontrados: {sorted(missing)[:12]}")
+    selected = {cnpj: (*record[:16], municipalities.get(record[15]), *record[17:])
+                for cnpj, record in selected.items()}
 
     basics = {record[1] for record in selected.values()}
     companies = {}
